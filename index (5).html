@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FriendZone - Share Photos & Chat Together</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
+    
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .gradient-bg-2 {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        .upload-zone {
+            border: 3px dashed #667eea;
+            transition: all 0.3s ease;
+        }
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: #764ba2;
+            background: rgba(102, 126, 234, 0.1);
+        }
+        .image-card {
+            transition: all 0.3s ease;
+        }
+        .image-card:hover .overlay {
+            opacity: 1;
+        }
+        .image-card:hover .delete-btn {
+            opacity: 1;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        .loader-sm {
+            width: 20px;
+            height: 20px;
+            border-width: 2px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .fade-in {
+            animation: fadeIn 0.3s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .chat-container {
+            height: calc(100vh - 280px);
+            min-height: 400px;
+        }
+        .message-bubble {
+            max-width: 75%;
+            word-wrap: break-word;
+        }
+        .my-message {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .other-message {
+            background: #e5e7eb;
+        }
+        .typing-indicator span {
+            animation: typing 1.4s infinite;
+            display: inline-block;
+        }
+        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes typing {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-5px); }
+        }
+        .online-dot {
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .tab-active {
+            background: white;
+            color: #667eea;
+        }
+        .notification-badge {
+            animation: bounce 0.5s ease;
+        }
+        @keyframes bounce {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <!-- Setup Screen -->
+    <div id="setupScreen" class="min-h-screen flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-lg w-full">
+            <div class="text-center mb-8">
+                <div class="gradient-bg w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-users text-4xl text-white"></i>
+                </div>
+                <h1 class="text-3xl font-bold text-gray-800">FriendZone</h1>
+                <p class="text-gray-500 mt-2">Share photos & chat with friends in real-time</p>
+            </div>
+
+            <!-- Firebase Config Section -->
+            <div id="firebaseSetup" class="mb-6">
+                <div class="bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-xl p-4 mb-6">
+                    <h3 class="font-semibold text-purple-800 mb-2"><i class="fas fa-magic mr-2"></i>One-time Setup (Free)</h3>
+                    <p class="text-purple-700 text-sm mb-3">Create a Firebase project to enable cloud features:</p>
+                    <ol class="text-purple-700 text-sm space-y-1 list-decimal list-inside">
+                        <li>Go to <a href="https://console.firebase.google.com" target="_blank" class="underline font-medium">Firebase Console</a></li>
+                        <li>Create new project → Add Web App</li>
+                        <li>Copy config values below</li>
+                        <li>Enable Firestore Database (test mode)</li>
+                        <li>Enable Storage (test mode)</li>
+                        <li><strong>Important:</strong> Set Firestore rules to allow read/write</li>
+                    </ol>
+                    <details class="mt-3">
+                        <summary class="text-purple-800 font-medium cursor-pointer">📋 Click for Firestore Rules (Required!)</summary>
+                        <div class="mt-2 bg-gray-800 text-green-400 p-3 rounded-lg text-xs font-mono overflow-x-auto">
+                            rules_version = '2';<br>
+                            service cloud.firestore {<br>
+                            &nbsp;&nbsp;match /databases/{database}/documents {<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;match /{document=**} {<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;allow read, write: if true;<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;}<br>
+                            &nbsp;&nbsp;}<br>
+                            }
+                        </div>
+                        <p class="text-purple-600 text-xs mt-2">Go to Firestore → Rules tab → Replace with above → Publish</p>
+                    </details>
+                    <details class="mt-2">
+                        <summary class="text-purple-800 font-medium cursor-pointer">📋 Click for Storage Rules (Required!)</summary>
+                        <div class="mt-2 bg-gray-800 text-green-400 p-3 rounded-lg text-xs font-mono overflow-x-auto">
+                            rules_version = '2';<br>
+                            service firebase.storage {<br>
+                            &nbsp;&nbsp;match /b/{bucket}/o {<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;match /{allPaths=**} {<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;allow read, write: if true;<br>
+                            &nbsp;&nbsp;&nbsp;&nbsp;}<br>
+                            &nbsp;&nbsp;}<br>
+                            }
+                        </div>
+                        <p class="text-purple-600 text-xs mt-2">Go to Storage → Rules tab → Replace with above → Publish</p>
+                    </details>
+                </div>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">API Key</label>
+                        <input type="text" id="apiKey" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent" placeholder="AIzaSy...">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Project ID</label>
+                        <input type="text" id="projectId" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent" placeholder="my-project-12345">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Storage Bucket</label>
+                        <input type="text" id="storageBucket" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent" placeholder="my-project-12345.appspot.com">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">App ID</label>
+                        <input type="text" id="appId" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent" placeholder="1:123456:web:abc123">
+                    </div>
+                </div>
+
+                <button onclick="saveFirebaseConfig()" class="w-full mt-6 gradient-bg text-white py-3 rounded-xl font-semibold hover:opacity-90 transition">
+                    <i class="fas fa-save mr-2"></i>Save & Continue
+                </button>
+
+                <div id="savedConfigInfo" class="hidden mt-4 bg-green-50 border border-green-200 rounded-xl p-4">
+                    <p class="text-green-700 text-sm"><i class="fas fa-check-circle mr-2"></i>Firebase configured!</p>
+                </div>
+            </div>
+
+            <!-- Room Section -->
+            <div id="roomSection" class="hidden">
+                <div class="border-t pt-6">
+                    <h3 class="font-semibold text-gray-800 mb-4 text-center">Join or Create a Room</h3>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Your Name</label>
+                            <input type="text" id="userName" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent" placeholder="Enter your name" maxlength="20">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Room Code</label>
+                            <div class="flex space-x-2">
+                                <input type="text" id="roomCode" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent uppercase" placeholder="Enter room code" maxlength="8">
+                                <button onclick="generateRoomCode()" class="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 transition" title="Generate random code">
+                                    <i class="fas fa-random"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button onclick="joinRoom()" class="w-full mt-6 gradient-bg text-white py-3 rounded-xl font-semibold hover:opacity-90 transition">
+                        <i class="fas fa-sign-in-alt mr-2"></i>Join Room
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <div id="mainApp" class="hidden">
+        <!-- Header -->
+        <header class="gradient-bg text-white shadow-lg sticky top-0 z-50">
+            <div class="container mx-auto px-4 py-3">
+                <div class="flex items-center justify-between flex-wrap gap-2">
+                    <div class="flex items-center space-x-3">
+                        <i class="fas fa-users text-2xl"></i>
+                        <div>
+                            <h1 class="text-xl font-bold">FriendZone</h1>
+                            <p class="text-xs text-white/70">Room: <span id="currentRoom" class="font-mono"></span></p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <span class="bg-white/20 px-3 py-1 rounded-full text-sm hidden sm:inline-flex items-center">
+                            <i class="fas fa-user mr-1"></i> <span id="displayName">User</span>
+                        </span>
+                        <div id="onlineUsers" class="bg-white/20 px-3 py-1 rounded-full text-sm flex items-center">
+                            <span class="online-dot w-2 h-2 bg-green-400 rounded-full mr-2"></span>
+                            <span id="onlineCount">1</span> online
+                        </div>
+                        <button onclick="showShareModal()" class="bg-white text-purple-600 px-3 py-1.5 rounded-full font-semibold hover:bg-gray-100 transition text-sm">
+                            <i class="fas fa-share-alt sm:mr-1"></i><span class="hidden sm:inline">Invite</span>
+                        </button>
+                        <button onclick="leaveRoom()" class="bg-red-500 text-white px-3 py-1.5 rounded-full font-semibold hover:bg-red-600 transition text-sm">
+                            <i class="fas fa-sign-out-alt"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Tab Navigation -->
+        <div class="bg-purple-600 px-4 py-2">
+            <div class="container mx-auto flex justify-center">
+                <div class="bg-purple-700 rounded-full p-1 flex">
+                    <button onclick="switchTab('chat')" id="chatTab" class="tab-active px-6 py-2 rounded-full font-semibold transition-all flex items-center">
+                        <i class="fas fa-comments mr-2"></i>Chat
+                        <span id="chatBadge" class="hidden ml-2 bg-red-500 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center notification-badge">0</span>
+                    </button>
+                    <button onclick="switchTab('photos')" id="photosTab" class="text-white/70 hover:text-white px-6 py-2 rounded-full font-semibold transition-all flex items-center">
+                        <i class="fas fa-images mr-2"></i>Photos
+                        <span id="photoCount" class="ml-2 bg-white/20 text-white text-xs px-2 py-0.5 rounded-full">0</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Section -->
+        <div id="chatSection" class="container mx-auto px-4 py-4">
+            <div class="bg-white rounded-2xl shadow-xl overflow-hidden">
+                <!-- Chat Messages -->
+                <div id="chatMessages" class="chat-container overflow-y-auto p-4 space-y-3">
+                    <!-- Welcome message -->
+                    <div class="text-center text-gray-400 text-sm py-8">
+                        <i class="fas fa-lock text-2xl mb-2"></i>
+                        <p>Messages are shared with everyone in this room</p>
+                        <p class="text-xs mt-1">Start chatting!</p>
+                    </div>
+                </div>
+
+                <!-- Typing Indicator -->
+                <div id="typingIndicator" class="hidden px-4 py-2 text-gray-500 text-sm">
+                    <span id="typingUser"></span> is typing
+                    <span class="typing-indicator">
+                        <span>.</span><span>.</span><span>.</span>
+                    </span>
+                </div>
+
+                <!-- Chat Input -->
+                <div class="border-t p-4 bg-gray-50">
+                    <div class="flex space-x-3">
+                        <button onclick="document.getElementById('imageInput').click()" class="bg-purple-100 text-purple-600 px-4 py-3 rounded-xl hover:bg-purple-200 transition">
+                            <i class="fas fa-image"></i>
+                        </button>
+                        <input type="file" id="imageInput" class="hidden" accept="image/*" onchange="sendImage(this.files[0])">
+                        <input type="text" id="messageInput" class="flex-1 px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent" placeholder="Type a message..." onkeypress="handleKeyPress(event)" oninput="handleTyping()">
+                        <button onclick="sendMessage()" class="gradient-bg text-white px-6 py-3 rounded-xl hover:opacity-90 transition">
+                            <i class="fas fa-paper-plane"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Photos Section -->
+        <div id="photosSection" class="container mx-auto px-4 py-4 hidden">
+            <!-- Upload Section -->
+            <div class="bg-white rounded-2xl shadow-xl p-6 mb-6">
+                <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                    <i class="fas fa-cloud-upload-alt text-purple-600 mr-3"></i>
+                    Upload Photos
+                </h2>
+                
+                <div id="uploadZone" class="upload-zone rounded-xl p-8 text-center cursor-pointer" onclick="document.getElementById('fileInput').click()">
+                    <input type="file" id="fileInput" class="hidden" accept="image/*" multiple onchange="handleFiles(this.files)">
+                    <i class="fas fa-cloud-upload-alt text-5xl text-purple-400 mb-3"></i>
+                    <p class="text-lg text-gray-600 mb-1">Drag & drop images here</p>
+                    <p class="text-gray-400 text-sm">or click to browse (Max 10MB)</p>
+                </div>
+
+                <!-- Upload Progress -->
+                <div id="uploadProgress" class="hidden mt-4">
+                    <div class="flex items-center justify-center space-x-3">
+                        <div class="loader loader-sm"></div>
+                        <span class="text-gray-600 text-sm">Uploading...</span>
+                    </div>
+                    <div class="mt-2 bg-gray-200 rounded-full h-2">
+                        <div id="progressBar" class="gradient-bg h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Gallery Section -->
+            <div class="bg-white rounded-2xl shadow-xl p-6">
+                <h2 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                    <i class="fas fa-photo-video text-purple-600 mr-3"></i>
+                    Shared Gallery
+                </h2>
+
+                <!-- Empty State -->
+                <div id="emptyState" class="text-center py-12">
+                    <i class="fas fa-images text-6xl text-gray-200 mb-4"></i>
+                    <p class="text-gray-400">No photos yet</p>
+                </div>
+
+                <!-- Image Grid -->
+                <div id="imageGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 hidden"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Share Modal -->
+    <div id="shareModal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 hidden p-4">
+        <div class="bg-white rounded-2xl p-6 max-w-md w-full">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-gray-800">Invite Friends</h3>
+                <button onclick="closeShareModal()" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <div class="bg-purple-50 rounded-xl p-4 mb-4 text-center">
+                <p class="text-sm text-purple-600 mb-1">Room Code:</p>
+                <p id="shareRoomCode" class="text-3xl font-bold font-mono text-purple-800 tracking-wider"></p>
+            </div>
+
+            <div class="bg-gray-100 rounded-lg p-3 flex items-center space-x-2 mb-4">
+                <input type="text" id="shareLink" class="bg-transparent flex-1 outline-none text-gray-700 text-sm" readonly>
+                <button onclick="copyLink()" class="bg-purple-600 text-white px-3 py-1.5 rounded-lg hover:bg-purple-700 transition text-sm">
+                    <i class="fas fa-copy"></i>
+                </button>
+            </div>
+            
+            <div class="flex justify-center space-x-4">
+                <a id="whatsappShare" href="#" target="_blank" class="w-12 h-12 bg-green-500 text-white rounded-full flex items-center justify-center hover:bg-green-600 transition">
+                    <i class="fab fa-whatsapp text-xl"></i>
+                </a>
+                <a id="telegramShare" href="#" target="_blank" class="w-12 h-12 bg-blue-500 text-white rounded-full flex items-center justify-center hover:bg-blue-600 transition">
+                    <i class="fab fa-telegram text-xl"></i>
+                </a>
+                <a id="emailShare" href="#" class="w-12 h-12 bg-gray-600 text-white rounded-full flex items-center justify-center hover:bg-gray-700 transition">
+                    <i class="fas fa-envelope text-xl"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Image Preview Modal -->
+    <div id="previewModal" class="fixed inset-0 bg-black/90 flex items-center justify-center z-50 hidden p-4">
+        <button onclick="closePreview()" class="absolute top-4 right-4 text-white text-2xl hover:text-gray-300">
+            <i class="fas fa-times"></i>
+        </button>
+        <img id="previewImage" class="max-w-full max-h-[85vh] rounded-lg" src="" alt="Preview">
+        <a id="downloadBtn" href="#" download class="absolute bottom-4 right-4 bg-white text-gray-800 px-4 py-2 rounded-full font-semibold hover:bg-gray-100 transition text-sm">
+            <i class="fas fa-download mr-1"></i>Download
+        </a>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-lg shadow-lg translate-y-20 opacity-0 transition-all duration-300 z-50">
+        <span id="toastMessage"></span>
+    </div>
+
+    <script>
+        // Global variables
+        let db, storage;
+        let currentRoom = '';
+        let currentUser = '';
+        let currentUserId = '';
+        let unsubscribeMessages = null;
+        let unsubscribeImages = null;
+        let unsubscribePresence = null;
+        let typingTimeout = null;
+        let activeTab = 'chat';
+        let unreadMessages = 0;
+
+        // Generate user ID
+        function generateUserId() {
+            return 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        }
+
+        // Check for saved config on load
+        document.addEventListener('DOMContentLoaded', () => {
+            currentUserId = localStorage.getItem('picshare_user_id') || generateUserId();
+            localStorage.setItem('picshare_user_id', currentUserId);
+
+            const savedConfig = localStorage.getItem('picshare_firebase_config');
+            if (savedConfig) {
+                const config = JSON.parse(savedConfig);
+                document.getElementById('apiKey').value = config.apiKey || '';
+                document.getElementById('projectId').value = config.projectId || '';
+                document.getElementById('storageBucket').value = config.storageBucket || '';
+                document.getElementById('appId').value = config.appId || '';
+                
+                if (config.apiKey && config.projectId) {
+                    try {
+                        initializeFirebase(config);
+                        document.getElementById('savedConfigInfo').classList.remove('hidden');
+                        document.getElementById('roomSection').classList.remove('hidden');
+                    } catch (e) {
+                        console.error('Failed to initialize Firebase:', e);
+                    }
+                }
+            }
+
+            const savedRoom = localStorage.getItem('picshare_room');
+            const savedUser = localStorage.getItem('picshare_user');
+            if (savedRoom) document.getElementById('roomCode').value = savedRoom;
+            if (savedUser) document.getElementById('userName').value = savedUser;
+        });
+
+        // Save Firebase config
+        function saveFirebaseConfig() {
+            const config = {
+                apiKey: document.getElementById('apiKey').value.trim(),
+                projectId: document.getElementById('projectId').value.trim(),
+                storageBucket: document.getElementById('storageBucket').value.trim(),
+                appId: document.getElementById('appId').value.trim()
+            };
+
+            if (!config.apiKey || !config.projectId || !config.storageBucket || !config.appId) {
+                showToast('Please fill in all fields');
+                return;
+            }
+
+            try {
+                initializeFirebase(config);
+                localStorage.setItem('picshare_firebase_config', JSON.stringify(config));
+                document.getElementById('savedConfigInfo').classList.remove('hidden');
+                document.getElementById('roomSection').classList.remove('hidden');
+                showToast('Firebase configured!');
+            } catch (e) {
+                showToast('Invalid config. Please check values.');
+                console.error(e);
+            }
+        }
+
+        // Initialize Firebase
+        function initializeFirebase(config) {
+            const firebaseConfig = {
+                apiKey: config.apiKey,
+                authDomain: `${config.projectId}.firebaseapp.com`,
+                projectId: config.projectId,
+                storageBucket: config.storageBucket,
+                appId: config.appId
+            };
+
+            if (!firebase.apps.length) {
+                firebase.initializeApp(firebaseConfig);
+            }
+            
+            db = firebase.firestore();
+            storage = firebase.storage();
+        }
+
+        // Generate random room code
+        function generateRoomCode() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            let code = '';
+            for (let i = 0; i < 6; i++) {
+                code += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            document.getElementById('roomCode').value = code;
+        }
+
+        // Join room
+        function joinRoom() {
+            const userName = document.getElementById('userName').value.trim();
+            const roomCode = document.getElementById('roomCode').value.trim().toUpperCase();
+
+            if (!userName) {
+                showToast('Please enter your name');
+                return;
+            }
+            if (!roomCode || roomCode.length < 4) {
+                showToast('Please enter a valid room code');
+                return;
+            }
+
+            if (!db) {
+                showToast('Please configure Firebase first');
+                return;
+            }
+
+            currentUser = userName;
+            currentRoom = roomCode;
+            
+            localStorage.setItem('picshare_room', roomCode);
+            localStorage.setItem('picshare_user', userName);
+
+            document.getElementById('setupScreen').classList.add('hidden');
+            document.getElementById('mainApp').classList.remove('hidden');
+            document.getElementById('currentRoom').textContent = roomCode;
+            document.getElementById('displayName').textContent = userName;
+            document.getElementById('shareRoomCode').textContent = roomCode;
+
+            setupShareLinks();
+            setupDragAndDrop();
+            setupPresence();
+            loadMessages();
+            loadImages();
+        }
+
+        // Leave room
+        function leaveRoom() {
+            if (unsubscribeMessages) unsubscribeMessages();
+            if (unsubscribeImages) unsubscribeImages();
+            if (unsubscribePresence) unsubscribePresence();
+            
+            // Remove presence
+            if (currentRoom && currentUserId) {
+                db.collection('rooms').doc(currentRoom).collection('presence').doc(currentUserId).delete();
+            }
+            
+            localStorage.removeItem('picshare_room');
+            document.getElementById('mainApp').classList.add('hidden');
+            document.getElementById('setupScreen').classList.remove('hidden');
+            currentRoom = '';
+        }
+
+        // Setup presence system
+        function setupPresence() {
+            const presenceRef = db.collection('rooms').doc(currentRoom).collection('presence').doc(currentUserId);
+            
+            // Set presence
+            presenceRef.set({
+                name: currentUser,
+                online: true,
+                lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+            });
+
+            // Update presence periodically
+            setInterval(() => {
+                presenceRef.update({
+                    lastSeen: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            }, 30000);
+
+            // Listen for online users
+            unsubscribePresence = db.collection('rooms').doc(currentRoom).collection('presence')
+                .where('online', '==', true)
+                .onSnapshot((snapshot) => {
+                    const count = snapshot.size;
+                    document.getElementById('onlineCount').textContent = count;
+                });
+
+            // Remove presence on page unload
+            window.addEventListener('beforeunload', () => {
+                presenceRef.update({ online: false });
+            });
+        }
+
+        // Switch tabs
+        function switchTab(tab) {
+            activeTab = tab;
+            const chatTab = document.getElementById('chatTab');
+            const photosTab = document.getElementById('photosTab');
+            const chatSection = document.getElementById('chatSection');
+            const photosSection = document.getElementById('photosSection');
+
+            if (tab === 'chat') {
+                chatTab.classList.add('tab-active');
+                chatTab.classList.remove('text-white/70');
+                photosTab.classList.remove('tab-active');
+                photosTab.classList.add('text-white/70');
+                chatSection.classList.remove('hidden');
+                photosSection.classList.add('hidden');
+                unreadMessages = 0;
+                document.getElementById('chatBadge').classList.add('hidden');
+            } else {
+                photosTab.classList.add('tab-active');
+                photosTab.classList.remove('text-white/70');
+                chatTab.classList.remove('tab-active');
+                chatTab.classList.add('text-white/70');
+                photosSection.classList.remove('hidden');
+                chatSection.classList.add('hidden');
+            }
+        }
+
+        // Load messages
+        function loadMessages() {
+            const messagesContainer = document.getElementById('chatMessages');
+            
+            // First, create the room document if it doesn't exist
+            db.collection('rooms').doc(currentRoom).set({
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                name: currentRoom
+            }, { merge: true }).then(() => {
+                console.log('Room document ready');
+            }).catch(err => {
+                console.error('Error creating room:', err);
+            });
+            
+            // Clear existing messages
+            messagesContainer.innerHTML = `
+                <div class="text-center text-gray-400 text-sm py-8">
+                    <i class="fas fa-lock text-2xl mb-2"></i>
+                    <p>Messages are shared with everyone in this room</p>
+                    <p class="text-xs mt-1">Start chatting!</p>
+                </div>
+            `;
+            
+            // Listen for messages - using simple query without limitToLast for better compatibility
+            unsubscribeMessages = db.collection('rooms').doc(currentRoom).collection('messages')
+                .orderBy('createdAt', 'asc')
+                .onSnapshot((snapshot) => {
+                    snapshot.docChanges().forEach((change) => {
+                        if (change.type === 'added') {
+                            const msg = { id: change.doc.id, ...change.doc.data() };
+                            
+                            // Check if message already displayed
+                            if (document.getElementById('msg-' + change.doc.id)) return;
+                            
+                            addMessageToUI(msg);
+                            
+                            // Show notification if not active tab
+                            if (activeTab !== 'chat' && msg.senderId !== currentUserId) {
+                                unreadMessages++;
+                                const badge = document.getElementById('chatBadge');
+                                badge.textContent = unreadMessages > 9 ? '9+' : unreadMessages;
+                                badge.classList.remove('hidden');
+                            }
+                        }
+                    });
+                    
+                    // Scroll to bottom
+                    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                }, (error) => {
+                    console.error('Error loading messages:', error);
+                    showToast('Error loading messages. Check Firestore rules!');
+                });
+        }
+
+        // Add message to UI
+        function addMessageToUI(msg) {
+            const messagesContainer = document.getElementById('chatMessages');
+            const isMyMessage = msg.senderId === currentUserId;
+            
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `flex ${isMyMessage ? 'justify-end' : 'justify-start'} fade-in`;
+            
+            let content = '';
+            if (msg.type === 'image') {
+                content = `<img src="${msg.imageUrl}" class="max-w-full rounded-lg cursor-pointer max-h-60" onclick="openPreview('${msg.imageUrl}', 'image', '${msg.sender}', '')">`;
+            } else {
+                content = `<p class="break-words">${escapeHtml(msg.text)}</p>`;
+            }
+            
+            const time = msg.timestamp ? new Date(msg.timestamp.seconds * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'now';
+            
+            messageDiv.innerHTML = `
+                <div class="message-bubble ${isMyMessage ? 'my-message text-white' : 'other-message text-gray-800'} px-4 py-2 rounded-2xl ${isMyMessage ? 'rounded-br-md' : 'rounded-bl-md'}">
+                    ${!isMyMessage ? `<p class="text-xs font-semibold mb-1 ${isMyMessage ? 'text-white/80' : 'text-purple-600'}">${escapeHtml(msg.sender)}</p>` : ''}
+                    ${content}
+                    <p class="text-xs mt-1 ${isMyMessage ? 'text-white/60' : 'text-gray-400'} text-right">${time}</p>
+                </div>
+            `;
+            
+            // Remove welcome message if exists
+            const welcome = messagesContainer.querySelector('.text-center');
+            if (welcome) welcome.remove();
+            
+            messagesContainer.appendChild(messageDiv);
+        }
+
+        // Escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Send message
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const text = input.value.trim();
+            
+            if (!text) return;
+            
+            input.value = '';
+            
+            try {
+                await db.collection('rooms').doc(currentRoom).collection('messages').add({
+                    text: text,
+                    sender: currentUser,
+                    senderId: currentUserId,
+                    type: 'text',
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                console.log('Message sent successfully');
+            } catch (error) {
+                console.error('Error sending message:', error);
+                showToast('Failed to send message. Check Firestore rules!');
+            }
+        }
+
+        // Handle key press
+        function handleKeyPress(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+
+        // Handle typing indicator
+        function handleTyping() {
+            // Optional: Implement typing indicator
+        }
+
+        // Send image in chat
+        async function sendImage(file) {
+            if (!file) return;
+            
+            if (file.size > 10 * 1024 * 1024) {
+                showToast('File too large. Max 10MB');
+                return;
+            }
+            
+            showToast('Sending image...');
+            
+            try {
+                const fileId = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                const fileRef = storage.ref(`rooms/${currentRoom}/chat/${fileId}_${file.name}`);
+                
+                await fileRef.put(file);
+                const downloadURL = await fileRef.getDownloadURL();
+                
+                await db.collection('rooms').doc(currentRoom).collection('messages').add({
+                    imageUrl: downloadURL,
+                    sender: currentUser,
+                    senderId: currentUserId,
+                    type: 'image',
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                    timestamp: firebase.firestore.FieldValue.serverTimestamp()
+                });
+                
+                showToast('Image sent!');
+                document.getElementById('imageInput').value = '';
+            } catch (error) {
+                console.error('Error sending image:', error);
+                showToast('Failed to send image. Check Storage rules!');
+            }
+        }
+
+        // Setup drag and drop for photos section
+        function setupDragAndDrop() {
+            const uploadZone = document.getElementById('uploadZone');
+            
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                uploadZone.addEventListener(eventName, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }, false);
+            });
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                uploadZone.addEventListener(eventName, () => {
+                    uploadZone.classList.add('dragover');
+                }, false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                uploadZone.addEventListener(eventName, () => {
+                    uploadZone.classList.remove('dragover');
+                }, false);
+            });
+
+            uploadZone.addEventListener('drop', (e) => {
+                handleFiles(e.dataTransfer.files);
+            }, false);
+        }
+
+        // Handle file upload
+        async function handleFiles(files) {
+            const validFiles = Array.from(files).filter(file => {
+                if (!file.type.startsWith('image/')) {
+                    showToast('Please upload only images');
+                    return false;
+                }
+                if (file.size > 10 * 1024 * 1024) {
+                    showToast('File too large. Max 10MB');
+                    return false;
+                }
+                return true;
+            });
+
+            if (validFiles.length === 0) return;
+
+            document.getElementById('uploadProgress').classList.remove('hidden');
+            const progressBar = document.getElementById('progressBar');
+
+            for (let i = 0; i < validFiles.length; i++) {
+                const file = validFiles[i];
+                const progress = ((i + 1) / validFiles.length) * 100;
+                
+                try {
+                    await uploadImage(file);
+                    progressBar.style.width = `${progress}%`;
+                } catch (error) {
+                    console.error('Upload error:', error);
+                    showToast(`Failed to upload ${file.name}`);
+                }
+            }
+
+            document.getElementById('uploadProgress').classList.add('hidden');
+            progressBar.style.width = '0%';
+            showToast(`${validFiles.length} photo(s) uploaded!`);
+            document.getElementById('fileInput').value = '';
+        }
+
+        // Upload image to Firebase
+        async function uploadImage(file) {
+            const fileId = Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            const fileRef = storage.ref(`rooms/${currentRoom}/gallery/${fileId}_${file.name}`);
+            
+            await fileRef.put(file);
+            const downloadURL = await fileRef.getDownloadURL();
+
+            await db.collection('rooms').doc(currentRoom).collection('images').add({
+                url: downloadURL,
+                name: file.name,
+                uploader: currentUser,
+                uploadedAt: firebase.firestore.FieldValue.serverTimestamp(),
+                fileRef: `rooms/${currentRoom}/gallery/${fileId}_${file.name}`
+            });
+        }
+
+        // Load images
+        function loadImages() {
+            unsubscribeImages = db.collection('rooms').doc(currentRoom).collection('images')
+                .orderBy('uploadedAt', 'desc')
+                .onSnapshot((snapshot) => {
+                    const images = [];
+                    snapshot.forEach(doc => {
+                        images.push({ id: doc.id, ...doc.data() });
+                    });
+
+                    displayImages(images);
+                    document.getElementById('photoCount').textContent = images.length;
+                });
+        }
+
+        // Display images
+        function displayImages(images) {
+            const grid = document.getElementById('imageGrid');
+            const emptyState = document.getElementById('emptyState');
+
+            if (images.length === 0) {
+                grid.classList.add('hidden');
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            grid.classList.remove('hidden');
+
+            grid.innerHTML = images.map(img => `
+                <div class="image-card relative rounded-xl overflow-hidden shadow-lg cursor-pointer fade-in" onclick="openPreview('${img.url}', '${img.name}', '${img.uploader || 'Unknown'}', '')">
+                    <img src="${img.url}" alt="${img.name}" class="w-full h-32 sm:h-40 object-cover" loading="lazy">
+                    <div class="overlay absolute inset-0 bg-gradient-to-t from-black/70 to-transparent opacity-0 transition-opacity flex flex-col justify-end p-3">
+                        <p class="text-white text-sm truncate">${img.name}</p>
+                        <p class="text-gray-300 text-xs">${img.uploader || 'Unknown'}</p>
+                    </div>
+                    <button onclick="event.stopPropagation(); deleteImage('${img.id}', '${img.fileRef}')" class="delete-btn absolute top-2 right-2 bg-red-500 text-white w-7 h-7 rounded-full opacity-0 transition-opacity flex items-center justify-center hover:bg-red-600 text-sm">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        // Delete image
+        async function deleteImage(id, fileRef) {
+            if (!confirm('Delete this image?')) return;
+
+            try {
+                await db.collection('rooms').doc(currentRoom).collection('images').doc(id).delete();
+                if (fileRef) {
+                    await storage.ref(fileRef).delete();
+                }
+                showToast('Image deleted');
+            } catch (error) {
+                console.error('Delete error:', error);
+                showToast('Failed to delete');
+            }
+        }
+
+        // Open preview
+        function openPreview(src, name, uploader, date) {
+            const modal = document.getElementById('previewModal');
+            const img = document.getElementById('previewImage');
+            const downloadBtn = document.getElementById('downloadBtn');
+            
+            img.src = src;
+            downloadBtn.href = src;
+            downloadBtn.download = name || 'image';
+            modal.classList.remove('hidden');
+        }
+
+        // Close preview
+        function closePreview() {
+            document.getElementById('previewModal').classList.add('hidden');
+        }
+
+        // Show share modal
+        function showShareModal() {
+            document.getElementById('shareModal').classList.remove('hidden');
+        }
+
+        // Close share modal
+        function closeShareModal() {
+            document.getElementById('shareModal').classList.add('hidden');
+        }
+
+        // Setup share links
+        function setupShareLinks() {
+            const url = window.location.href;
+            const message = `Join my FriendZone room!\n\nRoom Code: ${currentRoom}\n\nOpen: ${url}`;
+            
+            document.getElementById('shareLink').value = url;
+            document.getElementById('whatsappShare').href = `https://wa.me/?text=${encodeURIComponent(message)}`;
+            document.getElementById('telegramShare').href = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(`Join my FriendZone room! Code: ${currentRoom}`)}`;
+            document.getElementById('emailShare').href = `mailto:?subject=Join%20my%20FriendZone%20Room&body=${encodeURIComponent(message)}`;
+        }
+
+        // Copy link
+        function copyLink() {
+            const message = `Join my FriendZone room!\n\nRoom Code: ${currentRoom}\n\nOpen: ${window.location.href}`;
+            navigator.clipboard.writeText(message);
+            showToast('Copied to clipboard!');
+        }
+
+        // Show toast
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            const toastMessage = document.getElementById('toastMessage');
+            toastMessage.textContent = message;
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closePreview();
+                closeShareModal();
+            }
+        });
+
+        // Close modals on background click
+        document.getElementById('previewModal').addEventListener('click', (e) => {
+            if (e.target.id === 'previewModal') closePreview();
+        });
+        document.getElementById('shareModal').addEventListener('click', (e) => {
+            if (e.target.id === 'shareModal') closeShareModal();
+        });
+    </script>
+</body>
+</html>
